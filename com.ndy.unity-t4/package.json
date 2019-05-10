@@ -1,0 +1,23 @@
+{
+  "name": "com.ndy.unity-t4",
+  "displayName": "Unity T4",
+  "version": "0.0.1",
+  "unity": "2019.1",
+  "description": "Unity basic integration for T4 files",
+  "keywords": [
+    "t4",
+	"template"
+  ],
+  "category": "Utility",
+  "dependencies": {
+  },
+  "files": [
+    "/Editor",
+    "/Editor.meta",
+    "/Runtime",
+    "/Runtime.meta",
+    "/Documentation",
+    "/Documentation.meta",
+    "package.json.meta"
+  ]
+}
