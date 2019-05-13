@@ -113,11 +113,6 @@ namespace NDY
 
         public static void RunTransformTaskOnProject(string msbuildPath, string csProjectPath)
         {
-            if (EditorPrefs.HasKey(kDisableAutomaticTransformTask) && EditorPrefs.GetBool(kDisableAutomaticTransformTask))
-            {
-                return;
-            }
-
             Process process = new Process();
             process.StartInfo.FileName = msbuildPath;
             process.StartInfo.Arguments = csProjectPath + " /t:TransformAll";
@@ -174,6 +169,16 @@ namespace NDY
                 }
                 EditorPrefs.SetBool(kHasTextTransformPath, true);
 #else
+                var pathToProgramFiles = Environment.GetEnvironmentVariable("ProgramFiles(x86)");
+                string vsPath = Path.Combine(pathToProgramFiles, "Microsoft Visual Studio");
+                var directories = Directory.GetFiles(vsPath, "TextTransform.exe", SearchOption.AllDirectories);
+                if (directories == null || directories.Length == 0)
+                {
+                    UnityEngine.Debug.LogWarning(kTextTransformErrorMesssage);
+                    return;
+                }
+
+                EditorPrefs.SetString(kHasTextTransformPath, directories[directories.Length - 1]);
 #endif
             }
 
