@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -16,7 +17,7 @@ namespace NDY
         private const string kCSExtensionWithDot = ".cs";
         private const string kCSProjExtension = "*.csproj";
         private const string kMSBuildPath = "MSBuildPath";
-        private const string kTextTransformPath = "TextTransformPath";
+        private const string kHasTextTransformPath = "HasTextTransformPath";
         private const string kDisableAutomaticTransformTask = "DisableAutomaticTransformTask";
         private const string kTextTransformErrorMesssage = "You do not have T4 executable installed so code generation won't be run.";
         private const string kTemplateFileRegex = "<None Include=\"(?'path'.+.tt)\" />";
@@ -75,23 +76,30 @@ namespace NDY
             ProjectWindowUtil.CreateScriptAssetFromTemplateFile($"{kTemplatesRoot}/DefaultRuntimeTemplateT4.txt", "NewDefaultTemplateT4.tt");
         }
 
+        [MenuItem("NDY/Template T4/Run transform task on all projects", priority = 0, validate = true)]
+        public static bool RunTransformTaskValidate()
+        {
+#if UNITY_EDITOR_OSX
+            return false;
+#else
+            return true;
+#endif
+        }
+
+        [MenuItem("NDY/Template T4/Run transform task on all projects", priority = 0)]
+        public static void RunTransformTask()
+        {
+            RunTransformTaskOnWholeProjectSolution();
+        }
+
         public static void RunTransformTaskOnWholeProjectSolution(bool userCSProjOnly = true)
         {
-            if (!EditorPrefs.HasKey(kMSBuildPath))
+            var msbuildPath = GetMSBuildPath();
+            if (msbuildPath == null)
             {
-                var pathToProgramFiles = Environment.GetEnvironmentVariable("ProgramFiles(x86)");
-                string vsPath = Path.Combine(pathToProgramFiles, "Microsoft Visual Studio");
-                var directories = Directory.GetFiles(vsPath, "MSBuild.exe", SearchOption.AllDirectories);
-                if (directories == null || directories.Length == 0)
-                {
-                    UnityEngine.Debug.LogWarning(kTextTransformErrorMesssage);
-                    return;
-                }
-
-                EditorPrefs.SetString(kMSBuildPath, directories[directories.Length - 1]);
+                UnityEngine.Debug.LogWarning(kTextTransformErrorMesssage);
+                return;
             }
-
-            var msbuildPath = EditorPrefs.GetString(kMSBuildPath);
 
             string[] files = Directory.GetFiles(Directory.GetParent(Application.dataPath).FullName, kCSProjExtension);
             for (int i = 0; i < files.Length; i++)
@@ -113,7 +121,7 @@ namespace NDY
             Process process = new Process();
             process.StartInfo.FileName = msbuildPath;
             process.StartInfo.Arguments = csProjectPath + " /t:TransformAll";
-            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.UseShellExecute = true;
             process.StartInfo.CreateNoWindow = true;
             process.StartInfo.WindowStyle = ProcessWindowStyle.Hidden;
             process.Start();
@@ -123,7 +131,11 @@ namespace NDY
         [MenuItem("NDY/Template T4/Disable automatic transform task", validate = true)]
         public static bool DisableAutomaticTransformTaskValidation()
         {
+#if !UNITY_EDITOR_OSX
             return !EditorPrefs.HasKey(kDisableAutomaticTransformTask) || !EditorPrefs.GetBool(kDisableAutomaticTransformTask);
+#else
+            return false;
+#endif
         }
 
         [MenuItem("NDY/Template T4/Disable automatic transform task", validate = false, priority = 12)]
@@ -135,7 +147,11 @@ namespace NDY
         [MenuItem("NDY/Template T4/Enable automatic transform task", validate = true)]
         public static bool EnableAutomaticTransformTaskValidation()
         {
+#if !UNITY_EDITOR_OSX
             return !DisableAutomaticTransformTaskValidation();
+#else
+            return false;
+#endif
         }
 
         [MenuItem("NDY/Template T4/Enable automatic transform task", validate = false, priority = 11)]
@@ -147,11 +163,40 @@ namespace NDY
         [MenuItem("NDY/Template T4/Fix project solution", priority = 0)]
         public static void FixProjectSolution()
         {
-            if (!EditorPrefs.HasKey(kTextTransformPath))
+            if (!EditorPrefs.HasKey(kHasTextTransformPath))
+            {
+#if UNITY_EDITOR_OSX
+                var path = "/Applications/Visual Studio.app/Contents/Resources/lib/monodevelop/AddIns/MonoDevelop.TextTemplating";
+                if (!Directory.Exists(path) || GetMSBuildPath() == null)
+                {
+                    UnityEngine.Debug.LogWarning(kTextTransformErrorMesssage);
+                    return;
+                }
+                EditorPrefs.SetBool(kHasTextTransformPath, true);
+#else
+#endif
+            }
+
+            var msbuildPath = GetMSBuildPath();
+            if (msbuildPath == null)
             {
                 UnityEngine.Debug.LogWarning(kTextTransformErrorMesssage);
                 return;
             }
+
+            /*if (!EditorPrefs.HasKey(kTextTransformPath))
+            {
+                var pathToProgramFiles = Environment.GetEnvironmentVariable("ProgramFiles(x86)");
+                string vsPath = Path.Combine(pathToProgramFiles, "Microsoft Visual Studio");
+                var directories = Directory.GetFiles(vsPath, "MSBuild.exe", SearchOption.AllDirectories);
+                if (directories == null || directories.Length == 0)
+                {
+                    UnityEngine.Debug.LogWarning(kTextTransformErrorMesssage);
+                    return;
+                }
+
+                EditorPrefs.SetString(kTextTransformPath, directories[directories.Length - 1]);
+            }*/
 
             string[] files = Directory.GetFiles(Directory.GetParent(Application.dataPath).FullName, kCSProjExtension);
             for (int i = 0; i < files.Length; i++)
@@ -188,6 +233,7 @@ namespace NDY
                     }
                 }
 
+#if !UNITY_EDITOR_OSX
                 var templateToolRegex = new Regex(kTemplateToolRegex, RegexOptions.Singleline);
                 var templateToolMatch = templateToolRegex.Match(fileContent);
 
@@ -195,17 +241,45 @@ namespace NDY
                 {
                     fileContent = fileContent.Replace(templateToolMatch.Value, kTemplateToolCSProjFix);
                 }
+#endif
 
                 File.WriteAllText(files[i], fileContent);
 
+#if !UNITY_EDITOR_OSX
                 if (templateMatches.Count > 0 && NeedRebuild)
                 {
-                    RunTransformTaskOnProject(EditorPrefs.GetString(kMSBuildPath), files[i]);
+                    RunTransformTaskOnProject(msbuildPath, files[i]);
                     AssetDatabase.Refresh();
                 }
+#endif
+
             }
 
             NeedRebuild = false;
+        }
+
+        private static string GetMSBuildPath()
+        {
+            if (!EditorPrefs.HasKey(kMSBuildPath))
+            {
+                string pathToMsbuild;
+#if !UNITY_EDITOR_OSX
+                var pathToProgramFiles = Environment.GetEnvironmentVariable("ProgramFiles(x86)");
+                string vsPath = Path.Combine(pathToProgramFiles, "Microsoft Visual Studio");
+                var directories = Directory.GetFiles(vsPath, "MSBuild.exe", SearchOption.AllDirectories);
+                if (directories == null || directories.Length == 0)
+                {
+                    UnityEngine.Debug.LogWarning(kTextTransformErrorMesssage);
+                    return null;
+                }
+                pathToMsbuild = directories[directories.Length - 1];
+#else
+                pathToMsbuild = "msbuild";
+#endif
+                EditorPrefs.SetString(kMSBuildPath, pathToMsbuild);
+            }
+
+            return EditorPrefs.GetString(kMSBuildPath);
         }
     }
 }
